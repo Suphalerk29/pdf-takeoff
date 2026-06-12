@@ -253,7 +253,7 @@ export default function App() {
 
   const handleMouseDown = (e) => {
     if (e.button !== 0) return
-    setItemPopup(null)
+    // ไม่ setItemPopup(null) ที่นี่ — ให้ปุ่มใน popup onClick ทำงานได้ก่อน
     if (activeTool === 'crop') {
       const pos = getCanvasPos(e)
       setIsDrawing(true)
@@ -303,7 +303,8 @@ export default function App() {
     // select tool: click on detection
     if (activeTool === 'select' && !isDrawing) {
       const pos = getCanvasPos(e)
-      const hit = currentPageDetections.slice().reverse().find(d =>
+      const pageDetections = detectionsRef.current.filter(d => d.page === pageNum)
+      const hit = pageDetections.slice().reverse().find(d =>
         pos.x >= d.x && pos.x <= d.x + d.w && pos.y >= d.y && pos.y <= d.y + d.h
       )
       if (hit) {
@@ -313,7 +314,11 @@ export default function App() {
           screenX: e.clientX - rect.left,
           screenY: e.clientY - rect.top,
         })
+      } else {
+        setItemPopup(null) // คลิกพื้นที่ว่าง — ปิด popup
       }
+    } else if (activeTool !== 'select') {
+      setItemPopup(null)
     }
   }
 
@@ -727,13 +732,16 @@ export default function App() {
 
             {/* Item popup */}
             {itemPopup && (
-              <div style={{
-                position: 'absolute',
-                left: Math.min(itemPopup.screenX + 12, (containerRef.current?.clientWidth || 600) - 220),
-                top: Math.min(itemPopup.screenY - 10, (containerRef.current?.clientHeight || 400) - 260),
-                width: 210, background: T.sidebar, border: `0.5px solid ${T.border}`, borderRadius: 10,
-                padding: 14, zIndex: 30, boxShadow: '0 4px 24px rgba(0,0,0,0.15)'
-              }}>
+              <div
+                onMouseDown={e => e.stopPropagation()}
+                onClick={e => e.stopPropagation()}
+                style={{
+                  position: 'absolute',
+                  left: Math.min(itemPopup.screenX + 12, (containerRef.current?.clientWidth || 600) - 220),
+                  top: Math.min(itemPopup.screenY - 10, (containerRef.current?.clientHeight || 400) - 260),
+                  width: 210, background: T.sidebar, border: `0.5px solid ${T.border}`, borderRadius: 10,
+                  padding: 14, zIndex: 30, boxShadow: '0 4px 24px rgba(0,0,0,0.15)'
+                }}>
                 {(() => {
                   const d = detectionsRef.current.find(x => x.id === itemPopup.detId)
                   if (!d) return null
