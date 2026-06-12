@@ -119,6 +119,14 @@ export default function App() {
   zoomRef.current = zoom
   panRef.current = pan
 
+  // ref เก็บค่าล่าสุดเพื่อใช้ใน event handler (หลีกเลี่ยง closure เก่า)
+  const symbolsRef = useRef(symbols)
+  symbolsRef.current = symbols
+  const detectionsRef = useRef(detections)
+  detectionsRef.current = detections
+  const itemPopupRef = useRef(itemPopup)
+  itemPopupRef.current = itemPopup
+
   const { ready: cvReady, loading: cvLoading, runTemplateMatch, extractRegion } = useOpenCV()
 
   // ── autosave every 30s ──
@@ -275,10 +283,10 @@ export default function App() {
     if (isDrawing && drawBox && drawBox.w > 15 && drawBox.h > 15) {
       setIsDrawing(false)
       setPendingBox({ ...drawBox })
-      if (symbols.length > 0) {
+      if (symbolsRef.current.length > 0) {
         // มีสัญลักษณ์อยู่แล้ว — ให้เลือกว่าจะเพิ่ม manual หรือสร้างใหม่
         setManualBox({ ...drawBox })
-        setManualSymbolId(symbols[0].id)
+        setManualSymbolId(symbolsRef.current[0].id)
         setShowManualPopup(true)
       } else {
         setShowNamePopup(true)
@@ -416,7 +424,6 @@ export default function App() {
   // ── update detection style ──
   const updateDetectionStyle = (id, patch) => {
     setDetections(prev => prev.map(d => d.id === id ? { ...d, ...patch } : d))
-    // itemPopup now uses detId lookup so no need to patch here
   }
 
   // ── focus on canvas ──
@@ -728,7 +735,7 @@ export default function App() {
                 padding: 14, zIndex: 30, boxShadow: '0 4px 24px rgba(0,0,0,0.15)'
               }}>
                 {(() => {
-                  const d = detections.find(x => x.id === itemPopup.detId)
+                  const d = detectionsRef.current.find(x => x.id === itemPopup.detId)
                   if (!d) return null
                   const sym = symbols.find(s => s.id === d.symbolId)
                   return (
