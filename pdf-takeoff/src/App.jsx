@@ -95,8 +95,11 @@ export default function App() {
   const [scanMode, setScanMode] = useState('replace') // replace | append
 
   // --- item popup (click on canvas detection) ---
-  const [itemPopup, setItemPopup] = useState(null) // { det, screenX, screenY }
-  const [editingItem, setEditingItem] = useState(null) // detection id being edited
+  const [itemPopup, setItemPopup] = useState(null) // { detId, screenX, screenY }
+  // manual add
+  const [manualBox, setManualBox] = useState(null)
+  const [showManualPopup, setShowManualPopup] = useState(false)
+  const [manualSymbolId, setManualSymbolId] = useState(null)
 
   // --- toast ---
   const [toast, setToast] = useState(null)
@@ -272,10 +275,17 @@ export default function App() {
     if (isDrawing && drawBox && drawBox.w > 15 && drawBox.h > 15) {
       setIsDrawing(false)
       setPendingBox({ ...drawBox })
-      setShowNamePopup(true)
-      setNewDeviceName('')
-      setNewDeviceColor(SYMBOL_COLORS[symbols.length % SYMBOL_COLORS.length])
-      setNewDeviceShape('rect')
+      if (symbols.length > 0) {
+        // มีสัญลักษณ์อยู่แล้ว — ให้เลือกว่าจะเพิ่ม manual หรือสร้างใหม่
+        setManualBox({ ...drawBox })
+        setManualSymbolId(symbols[0].id)
+        setShowManualPopup(true)
+      } else {
+        setShowNamePopup(true)
+        setNewDeviceName('')
+        setNewDeviceColor(SYMBOL_COLORS[0])
+        setNewDeviceShape('rect')
+      }
     } else if (isDrawing) {
       setIsDrawing(false)
       setDrawBox(null)
@@ -291,7 +301,7 @@ export default function App() {
       if (hit) {
         const rect = containerRef.current.getBoundingClientRect()
         setItemPopup({
-          det: hit,
+          detId: hit.id,
           screenX: e.clientX - rect.left,
           screenY: e.clientY - rect.top,
         })
@@ -377,28 +387,28 @@ export default function App() {
   }
 
   // ── approve / reject ──
-  const approveDetection = useCallback((id) => {
+  const approveDetection = (id) => {
     setDetections(prev => {
       const next = prev.map(d => d.id === id ? { ...d, status: 'approved' } : d)
       setSummaryRows(sr => sr.map(r => ({ ...r, qty: next.filter(d => d.symbolId === r.id && d.status === 'approved').length })))
       return next
     })
-    setItemPopup(null)
-  }, [])
+    // ไม่ปิด popup — ให้ผู้ใช้เห็นสถานะเปลี่ยนเป็น "ยืนยันแล้ว"
+  }
 
-  const rejectDetection = useCallback((id) => {
+  const rejectDetection = (id) => {
     setDetections(prev => {
       const next = prev.filter(d => d.id !== id)
       setSummaryRows(sr => sr.map(r => ({ ...r, qty: next.filter(d => d.symbolId === r.id && d.status === 'approved').length })))
       return next
     })
-    setItemPopup(null)
-  }, [])
+    setItemPopup(null) // ลบแล้วปิด popup เพราะ item ไม่มีแล้ว
+  }
 
   // ── update detection style ──
   const updateDetectionStyle = (id, patch) => {
     setDetections(prev => prev.map(d => d.id === id ? { ...d, ...patch } : d))
-    if (itemPopup?.det?.id === id) setItemPopup(p => ({ ...p, det: { ...p.det, ...patch } }))
+    // itemPopup now uses detId lookup so no need to patch here
   }
 
   // ── focus on canvas ──
@@ -414,7 +424,7 @@ export default function App() {
     setPan({ x: containerW / 2 - cssCx * TARGET_ZOOM, y: containerH / 2 - cssCy * TARGET_ZOOM })
     setItemPopup(null)
     setTimeout(() => setItemPopup({
-      det,
+      detId: det.id,
       screenX: containerW / 2,
       screenY: containerH / 2,
     }), 300)
@@ -687,7 +697,7 @@ export default function App() {
                   viewBox={`0 0 ${pdfCanvasRef.current.width} ${pdfCanvasRef.current.height}`}
                 >
                   {currentPageDetections.map(d => (
-                    <DetectionShape key={d.id} d={d} isFocused={itemPopup?.det?.id === d.id} />
+                    <DetectionShape key={d.id} d={d} isFocused={itemPopup?.detId === d.id} />
                   ))}
                   {drawBox && drawBox.w > 2 && (
                     <rect x={drawBox.x} y={drawBox.y} width={drawBox.w} height={drawBox.h} fill="rgba(99,102,241,0.07)" stroke="#6366F1" strokeWidth={2} strokeDasharray="8 4" rx={3} />
@@ -710,7 +720,8 @@ export default function App() {
                 padding: 14, zIndex: 30, boxShadow: '0 4px 24px rgba(0,0,0,0.15)'
               }}>
                 {(() => {
-                  const d = itemPopup.det
+                  const d = detections.find(x => x.id === itemPopup.detId)
+                  if (!d) return null
                   const sym = symbols.find(s => s.id === d.symbolId)
                   return (
                     <>
@@ -729,7 +740,7 @@ export default function App() {
                         <div style={{ fontSize: 10, color: T.textHint, marginBottom: 4 }}>รูปทรง</div>
                         <div style={{ display: 'flex', gap: 4 }}>
                           {SHAPES.map(sh => (
-                            <button key={sh} onClick={() => updateDetectionStyle(d.id, { shape: sh })}
+                            <button key={sh} onClick={() => updateDetectionStyle(itemPopup.detId, { shape: sh })}
                               style={{ flex: 1, padding: '4px 0', fontSize: 11, border: `0.5px solid ${(d.shape || 'rect') === sh ? T.activeText : T.border}`, borderRadius: 5, background: (d.shape || 'rect') === sh ? T.active : T.btn, color: (d.shape || 'rect') === sh ? T.activeText : T.textSub, cursor: 'pointer' }}>
                               {sh === 'rect' ? '▭' : sh === 'circle' ? '○' : '◇'}
                             </button>
@@ -742,7 +753,7 @@ export default function App() {
                         <div style={{ fontSize: 10, color: T.textHint, marginBottom: 4 }}>สี</div>
                         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                           {SYMBOL_COLORS.map(c => (
-                            <div key={c} onClick={() => updateDetectionStyle(d.id, { color: c })}
+                            <div key={c} onClick={() => updateDetectionStyle(itemPopup.detId, { color: c })}
                               style={{ width: 20, height: 20, borderRadius: 4, background: c, cursor: 'pointer', outline: (d.color || sym?.color) === c ? '2px solid #1D4ED8' : '2px solid transparent', outlineOffset: 1 }} />
                           ))}
                         </div>
@@ -752,13 +763,15 @@ export default function App() {
                       <div style={{ display: 'flex', gap: 6 }}>
                         {d.status === 'pending' ? (
                           <>
-                            <button onClick={() => approveDetection(d.id)} style={{ flex: 1, padding: '6px 0', fontSize: 12, fontWeight: 500, background: '#059669', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>✓ Approve</button>
-                            <button onClick={() => rejectDetection(d.id)} style={{ flex: 1, padding: '6px 0', fontSize: 12, fontWeight: 500, background: '#DC2626', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>✕ Reject</button>
+                            <button onClick={() => approveDetection(itemPopup.detId)} style={{ flex: 1, padding: '6px 0', fontSize: 12, fontWeight: 500, background: '#059669', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>✓ Approve</button>
+                            <button onClick={() => rejectDetection(itemPopup.detId)} style={{ flex: 1, padding: '6px 0', fontSize: 12, fontWeight: 500, background: '#DC2626', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>✕ Reject</button>
                           </>
                         ) : (
                           <>
-                            <span style={{ flex: 1, textAlign: 'center', fontSize: 12, color: '#059669', padding: '6px 0' }}>✓ ยืนยันแล้ว</span>
-                            <button onClick={() => rejectDetection(d.id)} style={{ flex: 1, padding: '6px 0', fontSize: 12, background: '#DC2626', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>✕ ลบ</button>
+                            <div style={{ flex: 1, textAlign: 'center', fontSize: 12, color: '#059669', padding: '6px 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                              <span>✓</span><span>ยืนยันแล้ว</span>
+                            </div>
+                            <button onClick={() => rejectDetection(itemPopup.detId)} style={{ flex: 1, padding: '6px 0', fontSize: 12, background: '#DC2626', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>✕ ลบ</button>
                           </>
                         )}
                       </div>
@@ -924,6 +937,56 @@ export default function App() {
           {toast.msg}
           {toast.action && <button onClick={() => { toast.action(); setToast(null) }} style={{ background: '#3B82F6', color: '#fff', border: 'none', borderRadius: 6, padding: '3px 10px', fontSize: 12, cursor: 'pointer' }}>ไปตรวจสอบ →</button>}
           <button onClick={() => setToast(null)} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button>
+        </div>
+      )}
+
+      {/* ===== POPUP: เพิ่ม detection ด้วยมือ ===== */}
+      {showManualPopup && manualBox && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}
+          onClick={e => { if (e.target === e.currentTarget) { setShowManualPopup(false); setDrawBox(null) } }}>
+          <div style={{ background: T.sidebar, borderRadius: 14, padding: 24, width: 300, border: `0.5px solid ${T.border}` }}>
+            <p style={{ fontWeight: 500, fontSize: 15, marginBottom: 4, color: T.text }}>เพิ่มตำแหน่งด้วยมือ</p>
+            <p style={{ fontSize: 12, color: T.textHint, marginBottom: 16 }}>เลือกสัญลักษณ์ที่ตรงกับจุดนี้</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 16 }}>
+              {symbols.map(sym => (
+                <button key={sym.id} onClick={() => setManualSymbolId(sym.id)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 8, border: `0.5px solid ${manualSymbolId === sym.id ? T.activeText : T.border}`, background: manualSymbolId === sym.id ? T.active : T.btn, cursor: 'pointer' }}>
+                  <div style={{ width: 10, height: 10, borderRadius: 2, background: sym.color, flexShrink: 0 }} />
+                  {sym.templateDataUrl && <img src={sym.templateDataUrl} alt="" style={{ width: 24, height: 24, objectFit: 'contain', border: `0.5px solid ${T.border}`, borderRadius: 4, background: 'white' }} />}
+                  <span style={{ fontSize: 13, color: T.text }}>{sym.name}</span>
+                  {manualSymbolId === sym.id && <span style={{ marginLeft: 'auto', color: T.activeText, fontSize: 14 }}>✓</span>}
+                </button>
+              ))}
+              <button onClick={() => { setShowManualPopup(false); setShowNamePopup(true); setNewDeviceName(''); setNewDeviceColor(SYMBOL_COLORS[symbols.length % SYMBOL_COLORS.length]); setNewDeviceShape('rect') }}
+                style={{ padding: '7px 12px', borderRadius: 8, border: `0.5px dashed ${T.border}`, background: 'transparent', cursor: 'pointer', fontSize: 12, color: T.textSub }}>
+                + สร้างสัญลักษณ์ใหม่
+              </button>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => { setShowManualPopup(false); setDrawBox(null); setManualBox(null) }}
+                style={{ flex: 1, padding: '8px 0', fontSize: 13, border: `0.5px solid ${T.border}`, borderRadius: 8, background: T.btn, color: T.textSub, cursor: 'pointer' }}>ยกเลิก</button>
+              <button onClick={() => {
+                if (!manualSymbolId) return
+                const sym = symbols.find(s => s.id === manualSymbolId)
+                const newDet = {
+                  id: Date.now() + Math.random(),
+                  symbolId: manualSymbolId,
+                  x: manualBox.x, y: manualBox.y, w: manualBox.w, h: manualBox.h,
+                  confidence: 1.0, status: 'approved', page: pageNum,
+                  shape: sym?.shape || 'rect', color: sym?.color || '#3B82F6',
+                }
+                setDetections(prev => {
+                  const next = [...prev, newDet]
+                  setSummaryRows(sr => sr.map(r => ({ ...r, qty: next.filter(d => d.symbolId === r.id && d.status === 'approved').length })))
+                  return next
+                })
+                setShowManualPopup(false); setDrawBox(null); setManualBox(null)
+                showToast(`เพิ่ม ${sym?.name} แล้ว`)
+              }} style={{ flex: 2, padding: '8px 0', fontSize: 13, fontWeight: 500, borderRadius: 8, background: manualSymbolId ? '#059669' : T.btn, color: manualSymbolId ? '#fff' : T.textHint, border: 'none', cursor: manualSymbolId ? 'pointer' : 'not-allowed' }}>
+                เพิ่ม Detection
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
