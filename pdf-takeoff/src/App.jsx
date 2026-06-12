@@ -335,9 +335,10 @@ export default function App() {
     setScanning(true)
     setScanProgress(0)
 
-    // preserve approved if append mode
-    const preserved = mode === 'append' ? detections.filter(d => d.status === 'approved') : []
-    const newDetections = [...preserved]
+    // ปกป้อง approved เสมอทุก mode — ถ้า replace จะล้าง pending เก่าแต่เก็บ approved ไว้
+    const approvedDetections = detections.filter(d => d.status === 'approved')
+    const preserved = approvedDetections // ใช้ทุก mode
+    const newDetections = mode === 'append' ? [...preserved] : [...preserved] // เริ่มจาก approved เสมอ
     const total = pdfDoc.numPages * symbols.length
 
     for (let page = 1; page <= pdfDoc.numPages; page++) {
@@ -393,7 +394,14 @@ export default function App() {
       setSummaryRows(sr => sr.map(r => ({ ...r, qty: next.filter(d => d.symbolId === r.id && d.status === 'approved').length })))
       return next
     })
-    // ไม่ปิด popup — ให้ผู้ใช้เห็นสถานะเปลี่ยนเป็น "ยืนยันแล้ว"
+  }
+
+  const unapproveDetection = (id) => {
+    setDetections(prev => {
+      const next = prev.map(d => d.id === id ? { ...d, status: 'pending' } : d)
+      setSummaryRows(sr => sr.map(r => ({ ...r, qty: next.filter(d => d.symbolId === r.id && d.status === 'approved').length })))
+      return next
+    })
   }
 
   const rejectDetection = (id) => {
@@ -402,7 +410,7 @@ export default function App() {
       setSummaryRows(sr => sr.map(r => ({ ...r, qty: next.filter(d => d.symbolId === r.id && d.status === 'approved').length })))
       return next
     })
-    setItemPopup(null) // ลบแล้วปิด popup เพราะ item ไม่มีแล้ว
+    setItemPopup(null)
   }
 
   // ── update detection style ──
@@ -760,18 +768,21 @@ export default function App() {
                       </div>
 
                       {/* Actions */}
-                      <div style={{ display: 'flex', gap: 6 }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                         {d.status === 'pending' ? (
-                          <>
-                            <button onClick={() => approveDetection(itemPopup.detId)} style={{ flex: 1, padding: '6px 0', fontSize: 12, fontWeight: 500, background: '#059669', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>✓ Approve</button>
-                            <button onClick={() => rejectDetection(itemPopup.detId)} style={{ flex: 1, padding: '6px 0', fontSize: 12, fontWeight: 500, background: '#DC2626', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>✕ Reject</button>
-                          </>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button onClick={() => approveDetection(itemPopup.detId)} style={{ flex: 1, padding: '7px 0', fontSize: 12, fontWeight: 500, background: '#059669', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>✓ Approve</button>
+                            <button onClick={() => rejectDetection(itemPopup.detId)} style={{ flex: 1, padding: '7px 0', fontSize: 12, fontWeight: 500, background: '#DC2626', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>✕ Reject</button>
+                          </div>
                         ) : (
                           <>
-                            <div style={{ flex: 1, textAlign: 'center', fontSize: 12, color: '#059669', padding: '6px 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-                              <span>✓</span><span>ยืนยันแล้ว</span>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '5px 0', background: '#DCFCE7', borderRadius: 6 }}>
+                              <span style={{ fontSize: 12, color: '#059669', fontWeight: 500 }}>✓ ยืนยันแล้ว</span>
                             </div>
-                            <button onClick={() => rejectDetection(itemPopup.detId)} style={{ flex: 1, padding: '6px 0', fontSize: 12, background: '#DC2626', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>✕ ลบ</button>
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              <button onClick={() => unapproveDetection(itemPopup.detId)} style={{ flex: 1, padding: '6px 0', fontSize: 11, background: '#F59E0B', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>↩ ยกเลิก</button>
+                              <button onClick={() => rejectDetection(itemPopup.detId)} style={{ flex: 1, padding: '6px 0', fontSize: 11, background: '#DC2626', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>✕ ลบ</button>
+                            </div>
                           </>
                         )}
                       </div>
@@ -789,35 +800,62 @@ export default function App() {
                 <p style={{ fontSize: 13, color: T.textSub, marginBottom: 16 }}>
                   รายการที่ความมั่นใจต่ำกว่า {threshold}% — กด <kbd style={{ background: T.btn, borderRadius: 3, padding: '1px 5px', fontSize: 11 }}>A</kbd> Approve <kbd style={{ background: T.btn, borderRadius: 3, padding: '1px 5px', fontSize: 11 }}>D</kbd> Reject
                 </p>
-                {pendingDetections.length === 0 ? (
+                {detections.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: '60px 0', color: T.textHint }}>
-                    <div style={{ fontSize: 40, marginBottom: 8 }}>✓</div>
-                    <p style={{ fontSize: 14 }}>ไม่มีรายการที่ต้องตรวจสอบ</p>
-                    {detections.length === 0 && <p style={{ fontSize: 12, marginTop: 4 }}>กด Run Scan ก่อน</p>}
+                    <div style={{ fontSize: 40, marginBottom: 8 }}>📋</div>
+                    <p style={{ fontSize: 14 }}>ยังไม่มีข้อมูล กด Run Scan ก่อน</p>
                   </div>
                 ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {pendingDetections.map(d => {
-                      const sym = symbols.find(s => s.id === d.symbolId)
-                      return (
-                        <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 14px', background: T.sidebar, borderRadius: 10, border: `0.5px solid ${T.border}` }}>
-                          <div style={{ width: 10, height: 10, borderRadius: 2, background: sym?.color, flexShrink: 0 }} />
-                          <div style={{ flex: 1 }}>
-                            <p style={{ fontSize: 13, fontWeight: 500, color: T.text }}>{sym?.name || '?'}</p>
-                            <p style={{ fontSize: 11, color: T.textHint }}>หน้า {d.page} · ({Math.round(d.x / SCALE)}, {Math.round(d.y / SCALE)})</p>
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                            <div style={{ width: 56, height: 5, background: T.btn, borderRadius: 3, overflow: 'hidden' }}>
-                              <div style={{ height: '100%', width: `${Math.round(d.confidence * 100)}%`, background: '#F59E0B', borderRadius: 3 }} />
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {/* Pending */}
+                    {pendingDetections.length > 0 && (
+                      <>
+                        <p style={{ fontSize: 11, color: T.textHint, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>รอตรวจสอบ ({pendingDetections.length})</p>
+                        {pendingDetections.map(d => {
+                          const sym = symbols.find(s => s.id === d.symbolId)
+                          return (
+                            <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: T.sidebar, borderRadius: 10, border: `0.5px solid #F59E0B` }}>
+                              <div style={{ width: 9, height: 9, borderRadius: 2, background: sym?.color, flexShrink: 0 }} />
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <p style={{ fontSize: 13, fontWeight: 500, color: T.text }}>{sym?.name || '?'}</p>
+                                <p style={{ fontSize: 11, color: T.textHint }}>หน้า {d.page} · ({Math.round(d.x / SCALE)}, {Math.round(d.y / SCALE)})</p>
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                                <div style={{ width: 44, height: 4, background: T.btn, borderRadius: 3, overflow: 'hidden' }}>
+                                  <div style={{ height: '100%', width: `${Math.round(d.confidence * 100)}%`, background: '#F59E0B', borderRadius: 3 }} />
+                                </div>
+                                <span style={{ fontSize: 11, color: '#B45309', minWidth: 26 }}>{Math.round(d.confidence * 100)}%</span>
+                              </div>
+                              <button onClick={() => focusDetection(d)} style={{ ...s.btn, padding: '4px 8px', fontSize: 11, flexShrink: 0 }}>ดู</button>
+                              <button onClick={() => approveDetection(d.id)} style={{ padding: '5px 11px', fontSize: 12, fontWeight: 500, background: '#059669', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', flexShrink: 0 }}>✓</button>
+                              <button onClick={() => rejectDetection(d.id)} style={{ padding: '5px 11px', fontSize: 12, fontWeight: 500, background: '#DC2626', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', flexShrink: 0 }}>✕</button>
                             </div>
-                            <span style={{ fontSize: 11, color: '#B45309', minWidth: 28 }}>{Math.round(d.confidence * 100)}%</span>
-                          </div>
-                          <button onClick={() => focusDetection(d)} style={{ ...s.btn, padding: '4px 9px', fontSize: 11, flexShrink: 0 }}>ดู</button>
-                          <button onClick={() => approveDetection(d.id)} style={{ padding: '5px 12px', fontSize: 12, fontWeight: 500, background: '#059669', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', flexShrink: 0 }}>✓</button>
-                          <button onClick={() => rejectDetection(d.id)} style={{ padding: '5px 12px', fontSize: 12, fontWeight: 500, background: '#DC2626', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', flexShrink: 0 }}>✕</button>
-                        </div>
-                      )
-                    })}
+                          )
+                        })}
+                      </>
+                    )}
+                    {/* Approved */}
+                    {approvedDetections.length > 0 && (
+                      <>
+                        <p style={{ fontSize: 11, color: T.textHint, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: 10, marginBottom: 2 }}>ยืนยันแล้ว ({approvedDetections.length})</p>
+                        {approvedDetections.map(d => {
+                          const sym = symbols.find(s => s.id === d.symbolId)
+                          return (
+                            <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: T.sidebar, borderRadius: 10, border: `0.5px solid ${T.border}` }}>
+                              <div style={{ width: 9, height: 9, borderRadius: 2, background: sym?.color, flexShrink: 0 }} />
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <p style={{ fontSize: 13, fontWeight: 500, color: T.text }}>{sym?.name || '?'}</p>
+                                <p style={{ fontSize: 11, color: T.textHint }}>หน้า {d.page} · ({Math.round(d.x / SCALE)}, {Math.round(d.y / SCALE)})</p>
+                              </div>
+                              <span style={{ fontSize: 11, color: '#059669', flexShrink: 0 }}>✓ ยืนยัน</span>
+                              <button onClick={() => focusDetection(d)} style={{ ...s.btn, padding: '4px 8px', fontSize: 11, flexShrink: 0 }}>ดู</button>
+                              <button onClick={() => unapproveDetection(d.id)} style={{ padding: '5px 10px', fontSize: 11, background: '#F59E0B', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', flexShrink: 0 }}>↩</button>
+                              <button onClick={() => rejectDetection(d.id)} style={{ padding: '5px 10px', fontSize: 11, background: '#DC2626', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', flexShrink: 0 }}>✕</button>
+                            </div>
+                          )
+                        })}
+                      </>
+                    )}
                   </div>
                 )}
               </div>
